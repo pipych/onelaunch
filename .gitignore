@@ -1,0 +1,9 @@
+# OneLaunch
+__pycache__/
+.minecraft/
+dist/
+build/
+*.spec
+*.pyc
+*.pyo
+.python-version
