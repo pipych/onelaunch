@@ -1,19 +1,23 @@
 """
 OneLaunch — Minecraft Forge 1.20.1 launcher
-UI: HTML/CSS in native Windows window via pywebview (no browser)
+UI: HTML/CSS in native Windows window via pywebview
 """
 
 import hashlib, json, os, secrets, shutil, subprocess, sys, threading, time
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import urlopen, Request
-from urllib.parse import quote, urlencode, parse_qs, urlparse
+from urllib.parse import quote
 
 import minecraft_launcher_lib as mcl
 
-# ── Config ──────────────────────────────────────────────
+# ── Paths (works with PyInstaller and direct run) ───────
 
-GAME_DIR = Path(__file__).parent / ".minecraft"
+if getattr(sys, 'frozen', False):
+    APP_DIR = Path(sys.executable).parent
+else:
+    APP_DIR = Path(__file__).parent
+
+GAME_DIR = APP_DIR / ".minecraft"
 MC_VERSION = "1.20.1"
 MODPACK_URL = "https://pub-61c15faa68244ff5afc5cf17a0054122.r2.dev/onehouse-pack-v1/manifest.json"
 
@@ -134,7 +138,7 @@ def get_status():
     return {"java": j, "vanilla": v, "forge": f, "mods": m, "forge_version": find_installed_forge() or ""}
 
 
-# ── HTML ────────────────────────────────────────────────
+# ── HTML UI ─────────────────────────────────────────────
 
 HTML = r'''<!DOCTYPE html>
 <html lang="ru">
@@ -142,20 +146,12 @@ HTML = r'''<!DOCTYPE html>
 <meta charset="utf-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{
-  font-family:'Segoe UI',-apple-system,sans-serif;
-  background:#090b0e;color:#d4d4d4;
-  display:flex;flex-direction:column;align-items:center;
-  height:100vh;user-select:none;overflow:hidden;
-}
+body{font-family:'Segoe UI',-apple-system,sans-serif;background:#090b0e;color:#d4d4d4;display:flex;flex-direction:column;align-items:center;height:100vh;user-select:none;overflow:hidden}
 .ta{text-align:center;padding-top:60px}
 .ta h1{font-size:32px;font-weight:800;color:#d4d4d4;letter-spacing:-.5px}
 .ta p{font-size:12px;color:#6b7280;margin-top:4px}
-.s{flex:1}
-.sbtn{
-  background:#14171c;color:#6b7280;border:none;border-radius:50px;
-  padding:10px 32px;font-size:13px;font-weight:700;cursor:pointer;transition:.2s;margin-bottom:12px
-}
+.sp{flex:1}
+.sbtn{background:#14171c;color:#6b7280;border:none;border-radius:50px;padding:10px 32px;font-size:13px;font-weight:700;cursor:pointer;transition:.2s;margin-bottom:12px}
 .sbtn:hover{background:#1c2430}
 .sbtn.ready{color:#c0ff00}
 .pa{display:none;flex-direction:column;align-items:center;width:320px;margin-bottom:12px}
@@ -165,17 +161,9 @@ body{
 .ptx{font-size:11px;color:#6b7280;margin-top:6px}
 .bb{width:100%;background:#14171c;display:flex;align-items:flex-end;justify-content:space-between;padding:18px 28px}
 .nl{font-size:9px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.5px}
-.ni{
-  background:#090b0e;color:#d4d4d4;border:1px solid #1f2937;
-  border-radius:50px;padding:10px 18px;width:150px;font-size:14px;
-  font-weight:700;text-align:center;outline:none;transition:border-color .2s
-}
+.ni{background:#090b0e;color:#d4d4d4;border:1px solid #1f2937;border-radius:50px;padding:10px 18px;width:150px;font-size:14px;font-weight:700;text-align:center;outline:none;transition:border-color .2s}
 .ni:focus{border-color:#c0ff00}
-.pb{
-  background:#c0ff00;color:#090b0e;border:none;border-radius:50px;
-  padding:14px 48px;font-size:16px;font-weight:800;cursor:pointer;
-  letter-spacing:1px;transition:.2s
-}
+.pb{background:#c0ff00;color:#090b0e;border:none;border-radius:50px;padding:14px 48px;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:1px;transition:.2s}
 .pb:hover{background:#96cc00;transform:scale(1.02)}
 .pb:active{transform:scale(.98)}
 .pb:disabled{background:#374151;color:#6b7280;cursor:default;transform:none}
@@ -194,10 +182,10 @@ body{
 </head>
 <body>
 <div class="ta"><h1>OneLaunch</h1><p>Minecraft 1.20.1 + Forge</p></div>
-<div class="s"></div>
+<div class="sp"></div>
 <button class="sbtn" id="sb" onclick="showStatus()">📊  Статус</button>
 <div class="pa" id="pa"><div class="pt"><div class="pf" id="pf"></div></div><div class="ptx" id="ptx"></div></div>
-<div class="s"></div>
+<div class="sp"></div>
 <div class="bb">
   <div><span class="nl">Никнейм</span><br><input class="ni" id="ni" value="Player" maxlength="16"></div>
   <button class="pb" id="pb" onclick="doPlay()">ИГРАТЬ</button>
@@ -211,12 +199,7 @@ async function showStatus() {
   if (ov.classList.contains('show')) { ov.classList.remove('show'); return; }
   var data = await pywebview.api.get_status();
   var h = '';
-  [
-    ['Java 17', data.java],
-    ['Minecraft 1.20.1', data.vanilla],
-    ['Forge', data.forge],
-    ['Modpack', data.mods > 0 ? data.mods + ' модов' : 'не установлен']
-  ].forEach(function(i) {
+  [['Java 17', data.java],['Minecraft 1.20.1', data.vanilla],['Forge', data.forge],['Modpack', data.mods > 0 ? data.mods + ' модов' : 'не установлен']].forEach(function(i) {
     var ok = (typeof i[1] === 'boolean' && i[1]) || (typeof i[1] === 'number' && i[1] > 0);
     h += '<div class="sr"><span><span class="d ' + (ok ? 'ok' : 'fl') + '">●</span><span class="ll">' + i[0] + '</span></span><span class="v">' + (typeof i[1] === 'boolean' ? (i[1] ? '✓' : '✗') : i[1]) + '</span></div>';
   });
@@ -228,11 +211,8 @@ async function showStatus() {
 function updateStatusBtn() {
   pywebview.api.get_status().then(function(data) {
     var b = document.getElementById('sb');
-    if (data.java && data.vanilla && data.forge) {
-      b.textContent = '📊  Готово'; b.classList.add('ready');
-    } else {
-      b.textContent = '📊  Статус'; b.classList.remove('ready');
-    }
+    if (data.java && data.vanilla && data.forge) { b.textContent = '📊  Готово'; b.classList.add('ready'); }
+    else { b.textContent = '📊  Статус'; b.classList.remove('ready'); }
   });
 }
 
@@ -253,7 +233,6 @@ function doPlay() {
   pywebview.api.install_and_launch(nick);
 }
 
-// Called from Python to update progress
 window._setProgress = function(p, t) { setProgress(p, t); };
 window._onComplete = function(err) {
   installing = false;
@@ -298,14 +277,8 @@ class Api:
         threading.Thread(target=run, daemon=True).start()
 
 
-# ── Main ─────────────────────────────────────────────────
-
 if __name__ == "__main__":
     GAME_DIR.mkdir(parents=True, exist_ok=True)
     import webview
-    api = Api()
-    window = webview.create_window(
-        "OneLaunch", html=HTML, js_api=api,
-        width=460, height=400, resizable=False
-    )
+    webview.create_window("OneLaunch", html=HTML, js_api=Api(), width=460, height=400, resizable=False)
     webview.start(debug=False)
