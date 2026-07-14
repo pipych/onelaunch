@@ -7,7 +7,7 @@ from pathlib import Path
 
 import _update_tuf
 
-VERSION = "0.2.9"
+VERSION = "0.3.0"
 
 if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).parent

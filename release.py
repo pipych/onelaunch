@@ -160,13 +160,36 @@ def main():
         print("\nBuild FAILED!")
         return result.returncode
 
-    # Step 3 — git commit + push
+    # Step 3 — add bundle to TUF repository (generates targets/)
+    print(f"\n=== Adding bundle v{new_ver} to TUF repository ===\n")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "repo_add_bundle.py")],
+        cwd=str(ROOT)
+    )
+    if result.returncode != 0:
+        print("\nrepo_add_bundle FAILED!")
+        return result.returncode
+
+    # Step 4 — upload TUF repo + installer to R2
+    print(f"\n=== Uploading to R2 ===\n")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "upload_r2.py")],
+        cwd=str(ROOT)
+    )
+    if result.returncode != 0:
+        print("\nUpload to R2 FAILED! Check .env credentials.")
+        return result.returncode
+
+    # Step 5 — git commit + push
     git_rc = git_commit_and_push(new_ver)
     if git_rc != 0:
         print("\nGit push FAILED!")
         return git_rc
 
     print(f"\n=== Release {new_ver} complete ===")
+    print(f"  Metadata:  https://update.onelaunch.pp.ua/metadata/")
+    print(f"  Targets:   https://update.onelaunch.pp.ua/targets/")
+    print(f"  Installer: https://update.onelaunch.pp.ua/OneLaunch_Setup.exe")
     return 0
 
 

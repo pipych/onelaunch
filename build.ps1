@@ -72,15 +72,8 @@ if (Test-Path $rootSrc) {
 Write-Host "Layout: $staging"
 Get-ChildItem $staging -Recurse -Depth 2 | ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) }
 
-# ── Create update ZIP for tufup (bundle: _app/* without _app/ prefix) ──
-Write-Host "=== Step 5: Create update ZIP ==="
-$zipPath = "dist\OneLaunch_Update.zip"
-Compress-Archive -Path "$staging\_app\*", "$staging\OneLaunch.exe" -DestinationPath $zipPath -Force
-$zipSize = (Get-Item $zipPath).Length / 1MB
-Write-Host "Update ZIP: $([math]::Round($zipSize,1)) MB"
-
 # ── Build NSIS installer ─────────────────────────────────
-Write-Host "=== Step 6: Build NSIS installer ==="
+Write-Host "=== Step 5: Build NSIS installer ==="
 $nsis = Get-Command makensis -ErrorAction SilentlyContinue
 if (-not $nsis) {
     $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
@@ -102,18 +95,12 @@ if ($LASTEXITCODE -ne 0) {
 $setup = "installer\OneLaunch_Setup.exe"
 if (Test-Path $setup) {
     $size = (Get-Item $setup).Length / 1MB
-    Write-Host "=== Step 7: Upload to R2 (if .env exists) ==="
-if (Test-Path ".env") {
-    python upload_r2.py
-} else {
-    Write-Host "SKIP: no .env file (R2 credentials). Create from .env.example" -ForegroundColor Yellow
-}
-
-Write-Host "=== DONE ===" -ForegroundColor Green
+    Write-Host "=== DONE ===" -ForegroundColor Green
     Write-Host "  Updater:    dist\OneLaunch.exe"
     Write-Host "  Launcher:   $appDir\"
-    Write-Host "  Update ZIP: dist\OneLaunch_Update.zip ($([math]::Round($zipSize,1)) MB)"
     Write-Host "  Installer:  $setup ($([math]::Round($size,1)) MB)"
+    Write-Host ""
+    Write-Host "  Next: run release.py to generate TUF targets + upload to R2"
 } else {
     Write-Host "ERROR: $setup not found!" -ForegroundColor Red
 }
