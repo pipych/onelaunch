@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.request import urlopen, Request
 from urllib.parse import quote
 
-VERSION = "0.2.7"
+VERSION = "0.2.8"
 UPDATE_MANIFEST_URL = "https://update.onelaunch.pp.ua/onelaunch-update.json"
 
 if getattr(sys, 'frozen', False):
