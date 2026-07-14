@@ -12,12 +12,12 @@ UninstallIcon "..\OneLaunch_icon.ico"
 !define MUI_ICON "..\OneLaunch_icon.ico"
 !define MUI_UNICON "..\OneLaunch_icon.ico"
 
-VIProductVersion "0.3.4.0"
+VIProductVersion "0.3.5.0"
 VIAddVersionKey "CompanyName" "OneDev"
 VIAddVersionKey "FileDescription" "OneLaunch Setup"
-VIAddVersionKey "FileVersion" "0.3.4"
+VIAddVersionKey "FileVersion" "0.3.5"
 VIAddVersionKey "ProductName" "OneLaunch"
-VIAddVersionKey "ProductVersion" "0.3.4"
+VIAddVersionKey "ProductVersion" "0.3.5"
 VIAddVersionKey "LegalCopyright" "OneDev"
 
 Var CreateDesktopShortcut
