@@ -1,167 +1,30 @@
 """
-OneLaunch Updater вЂ” splash + update check + launch main app
+OneLaunch Updater — splash + tufup update check + launch launcher.
 Tiny onefile exe. Always runs first.
 """
-
-import json, os, shutil, subprocess, sys, tempfile, time, zipfile
+import os, subprocess, sys, threading, time
 from pathlib import Path
-from urllib.request import urlopen, Request
-from urllib.parse import quote
 
-VERSION = "0.2.8"
-UPDATE_MANIFEST_URL = "https://update.onelaunch.pp.ua/onelaunch-update.json"
+import _update_tuf
 
-if getattr(sys, 'frozen', False):
+VERSION = "0.2.9"
+
+if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).parent
 else:
     APP_DIR = Path(__file__).parent
 
-APP_SUBDIR = APP_DIR / "_app"
-LAUNCHER_EXE = APP_SUBDIR / "OneLaunch_App.exe"
-
-
-def _parse_ver(v):
-    try:
-        return tuple(int(x) for x in v.split("."))
-    except Exception:
-        return (0,)
-
-
-def check_for_updates():
-    try:
-        r = Request(UPDATE_MANIFEST_URL, headers={"User-Agent": f"OneLaunch-Updater/{VERSION}"})
-        with urlopen(r, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8-sig"))
-        latest = data.get("version", "")
-        url = data.get("url", "")
-        if latest and _parse_ver(latest) > _parse_ver(VERSION) and url:
-            return True, latest, url
-    except Exception:
-        pass
-    return False, None, None
-
-
-def download_with_progress(url, dest, splash, new_ver):
-    """Download ZIP with progress bar updates to splash window."""
-    url = quote(url, safe=':/?#[]@!$&\'()*+,;=')
-    r = Request(url, headers={"User-Agent": "OneLaunch-Updater/1.0"})
-    with urlopen(r, timeout=60) as resp:
-        total = int(resp.headers.get('Content-Length', 0))
-        total_mb = total / (1024 * 1024) if total > 0 else 0
-        done = 0
-        with open(dest, "wb") as f:
-            while True:
-                chunk = resp.read(65536)
-                if not chunk:
-                    break
-                f.write(chunk)
-                done += len(chunk)
-                if total > 0:
-                    pct = int(done / total * 100)
-                    mb = done / (1024 * 1024)
-                    splash.evaluate_js(f"setSplashProgress({pct})")
-                    splash.evaluate_js(f"setSplashText('Downloading {new_ver}... {mb:.0f} / {total_mb:.0f} MB')")
-
-
-def install_update(extract_dir, splash, new_ver):
-    """Replace _app/ with extracted files, with progress feedback."""
-    splash.evaluate_js(f"setSplashText('Installing {new_ver}...')")
-    splash.evaluate_js("setSplashProgress(100)")
-
-    # Count files for progress
-    all_files = []
-    for root, dirs, files in os.walk(str(extract_dir)):
-        for f in files:
-            all_files.append(Path(root) / f)
-    total_files = len(all_files)
-
-    # Remove old _app
-    if APP_SUBDIR.exists():
-        try:
-            shutil.rmtree(str(APP_SUBDIR), ignore_errors=True)
-            time.sleep(0.5)
-        except Exception:
-            pass
-
-    APP_SUBDIR.mkdir(parents=True, exist_ok=True)
-
-    # Copy files one by one with progress
-    for i, src in enumerate(all_files):
-        rel = src.relative_to(extract_dir)
-        # OneLaunch.exe goes to root, everything else into _app/
-        if rel.name == "OneLaunch.exe":
-            dst = APP_DIR / "OneLaunch.exe"
-        else:
-            dst = APP_SUBDIR / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            shutil.copy2(str(src), str(dst))
-        except Exception:
-            pass
-        if total_files > 0 and i % 50 == 0:
-            pct = int(i / total_files * 100)
-            splash.evaluate_js(f"setSplashProgress({pct})")
-            splash.evaluate_js(f"setSplashText('Installing {new_ver}... {pct}%')")
-
-    splash.evaluate_js("setSplashProgress(100)")
-    splash.evaluate_js(f"setSplashText('Installing {new_ver}... 100%')")
+# The launcher lives in _app/ (on Windows: %APPDATA%\OneLaunch\_app\OneLaunch_App.exe)
+LAUNCHER_EXE = APP_DIR / "_app" / "OneLaunch_App.exe"
 
 
 def launch_launcher():
     if LAUNCHER_EXE.exists():
         subprocess.Popen(
-            [str(LAUNCHER_EXE)], shell=False,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            [str(LAUNCHER_EXE)],
+            shell=False,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
-
-
-def do_update(download_url, new_ver, splash):
-    tmp_dir = Path(tempfile.gettempdir())
-    zip_path = tmp_dir / "OneLaunch_Update.zip"
-    extract_dir = tmp_dir / "OneLaunch_Update"
-
-    try:
-        # Phase 1: Download
-        splash.evaluate_js(f"setSplashText('Downloading {new_ver}...')")
-        splash.evaluate_js("setSplashBar(True)")
-        download_with_progress(download_url, str(zip_path), splash, new_ver)
-
-        # Phase 2: Extract
-        if extract_dir.exists():
-            shutil.rmtree(str(extract_dir), ignore_errors=True)
-        extract_dir.mkdir(parents=True, exist_ok=True)
-
-        with zipfile.ZipFile(str(zip_path), 'r') as zf:
-            zf.extractall(str(extract_dir))
-        zip_path.unlink(missing_ok=True)
-
-        # Phase 3: Install (replace _app)
-        install_update(extract_dir, splash, new_ver)
-
-        # Cleanup temp extract dir
-        shutil.rmtree(str(extract_dir), ignore_errors=True)
-
-        # Phase 4: Done -- launch new version
-        splash.evaluate_js("setSplashText('Done! Starting OneLaunch...')")
-        time.sleep(0.5)
-        splash.destroy()
-        launch_launcher()
-        os._exit(0)
-
-    except Exception as e:
-        import traceback
-        log_path = APP_DIR / "onelaunch-error.log"
-        log_path.write_text(f"Update error: {e}\n{traceback.format_exc()}", "utf-8")
-        try:
-            splash.evaluate_js(f"setSplashText('Error: {str(e)[:50]}')")
-            splash.evaluate_js("setSplashProgress(0)")
-            time.sleep(3)
-            splash.destroy()
-        except Exception:
-            pass
-        # Even on error, try to launch existing launcher
-        launch_launcher()
-        os._exit(0)
 
 
 SPLASH_HTML = r'''<!DOCTYPE html>
@@ -170,7 +33,9 @@ SPLASH_HTML = r'''<!DOCTYPE html>
 <meta charset="utf-8">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0d1114;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;user-select:none;overflow:hidden;font-family:'Segoe UI',-apple-system,sans-serif}
+body{background:#0d1114;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;height:100vh;user-select:none;overflow:hidden;
+  font-family:'Segoe UI',-apple-system,sans-serif}
 .logo{font-size:22px;font-weight:800;color:#d4d4d4;letter-spacing:-.5px;margin-bottom:8px}
 .version{font-size:11px;color:#4a5568;font-weight:600;letter-spacing:1px;margin-bottom:20px}
 .loader{display:flex;gap:4px;margin-bottom:16px}
@@ -211,30 +76,62 @@ window.setSplashVersion = function(v) {
 </html>'''
 
 
+def progress_hook_splash(splash):
+    """Return a progress hook that updates the splash window."""
+
+    def hook(bytes_downloaded: int, bytes_expected: int):
+        if bytes_expected > 0:
+            pct = int(bytes_downloaded / bytes_expected * 100)
+            mb_down = bytes_downloaded / (1024 * 1024)
+            mb_total = bytes_expected / (1024 * 1024)
+            splash.evaluate_js(f"setSplashProgress({pct})")
+            splash.evaluate_js(f"setSplashText('Downloading... {mb_down:.0f} / {mb_total:.0f} MB')")
+
+    return hook
+
+
 def on_splash_loaded():
     import webview
-    splash = webview.windows[0]
 
-    # Show current version
+    splash = webview.windows[0]
     splash.evaluate_js(f"setSplashVersion('{VERSION}')")
 
-    has_update, new_ver, update_url = check_for_updates()
+    try:
+        _update_tuf.init_for_updater(VERSION)
+        splash.evaluate_js("setSplashBar(True)")
+        new_version = _update_tuf.check_and_update(
+            version=VERSION, progress_hook=progress_hook_splash(splash)
+        )
 
-    if has_update:
-        do_update(update_url, new_ver, splash)
-        # never reaches here (os._exit)
-    else:
-        # No update -- launch launcher and exit
-        launch_launcher()
-        splash.destroy()
-        os._exit(0)
+        if new_version:
+            splash.evaluate_js(
+                f"setSplashText('Updated to {new_version}! Starting...')"
+            )
+            time.sleep(1.5)
+            splash.destroy()
+            launch_launcher()
+            os._exit(0)
+    except ImportError:
+        pass  # tufup not installed, just launch
+    except Exception as e:
+        splash.evaluate_js(f"setSplashText('Error: {str(e)[:50]}')")
+        time.sleep(2)
+
+    splash.destroy()
+    launch_launcher()
+    os._exit(0)
 
 
 if __name__ == "__main__":
     import webview
+
     splash = webview.create_window(
-        "OneLaunch", html=SPLASH_HTML,
-        width=360, height=240,
-        frameless=True, resizable=False, on_top=True
+        "OneLaunch",
+        html=SPLASH_HTML,
+        width=360,
+        height=240,
+        frameless=True,
+        resizable=False,
+        on_top=True,
     )
     webview.start(func=on_splash_loaded)

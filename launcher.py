@@ -21,9 +21,7 @@ MODPACK_URL = "https://modpack.onelaunch.pp.ua/onehouse-pack-v1/manifest.json"
 _forge_version = None
 _pack_manifest = None
 
-VERSION = "0.2.8"
-UPDATE_URL = "https://update.onelaunch.pp.ua/onelaunch-update.json"
-
+VERSION = "0.2.9"
 def load_config():
     if CONFIG_PATH.exists():
         try:
@@ -167,85 +165,38 @@ def get_status():
     return {"java": j, "vanilla": v, "forge": f, "mods": m, "forge_version": find_installed_forge() or ""}
 
 
-# ── Update check ────────────────────────────────────────
+# ── Update check (tufup) ────────────────────────────────
 
-def _parse_ver(v):
+try:
+    import _update_tuf
+    _update_tuf.init_for_launcher(VERSION)
+except ImportError:
+    _update_tuf = None
+
+
+def check_for_update_and_notify():
+    """Check tufup repo for updates. Returns (is_available, new_version)."""
+    if _update_tuf is None:
+        return False, None
     try:
-        return tuple(int(x) for x in v.split("."))
+        new_ver = _update_tuf.is_update_available(VERSION)
+        return bool(new_ver), new_ver
     except Exception:
-        return (0,)
-
-def check_update():
-    """Returns (new_version, download_url) or (None, None)."""
-    try:
-        r = Request(UPDATE_URL, headers={"User-Agent": f"OneLaunch/{VERSION}"})
-        with urlopen(r, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8-sig"))
-        latest = data.get("version", "")
-        dl_url = data.get("url", "")
-        if latest and _parse_ver(latest) > _parse_ver(VERSION) and dl_url:
-            return latest, dl_url
-    except Exception:
-        pass
-    return None, None
-
-def _download_update(url, dest):
-    r = Request(url, headers={"User-Agent": "OneLaunch/1.0"})
-    with urlopen(r, timeout=120) as resp:
-        with open(dest, "wb") as f:
-            shutil.copyfileobj(resp, f)
-
-def _apply_update(zip_path):
-    app_dir = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).parent
-    extract_dir = Path(tempfile.gettempdir()) / "OneLaunch_Update_Extract"
-    if extract_dir.exists():
-        shutil.rmtree(str(extract_dir), ignore_errors=True)
-    extract_dir.mkdir(parents=True, exist_ok=True)
-
-    with zipfile.ZipFile(str(zip_path), 'r') as zf:
-        zf.extractall(str(extract_dir))
-    zip_path.unlink(missing_ok=True)
-
-    launcher_exe = app_dir / "OneLaunch_App.exe"
-    bat = Path(tempfile.gettempdir()) / "OneLaunch_Swap.bat"
-    bats = [
-        '@echo off',
-        'title OneLaunch Update',
-        ':wait',
-        f'tasklist /fi "PID eq {os.getpid()}" 2>NUL | find /i "{os.getpid()}" >NUL',
-        'if not errorlevel 1 (',
-        '  timeout /t 1 /nobreak >NUL',
-        '  goto wait',
-        ')',
-        f'xcopy /Y /E /Q "{extract_dir}\\*" "{app_dir}\\_app\\"',
-        f'if exist "{extract_dir}\\OneLaunch.exe" copy /Y "{extract_dir}\\OneLaunch.exe" "{app_dir}\\"',
-        f'rmdir /s /q "{extract_dir}"',
-        f'del /f /q "{bat}"',
-        f'start "" "{launcher_exe}"',
-    ]
-    bat.write_text('\n'.join(bats), 'utf-8')
-    subprocess.Popen(
-        [str(bat)], shell=False,
-        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-    )
-
-def _prompt_update(new_ver):
-    """Show dialog asking user to update. Returns True if user accepted."""
-    try:
-        import tkinter as tk
-        from tkinter import messagebox
-        root = tk.Tk()
-        root.withdraw()
-        result = messagebox.askyesno(
-            "OneLaunch — Обновление",
-            f"Доступна новая версия {new_ver}. Обновить?"
-        )
-        root.destroy()
-        return bool(result)
-    except Exception:
-        return False
+        return False, None
 
 
+def apply_update_from_launcher(new_ver):
+    """Download and apply update, then restart."""
+    if _update_tuf is None:
+        return None
+    result = _update_tuf.check_and_update(VERSION)
+    if result:
+        # Re-launch self (the new version should be in place)
+        exe = Path(sys.executable)
+        subprocess.Popen([str(exe)], shell=False,
+                         creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        os._exit(0)
+    return result
 # ── HTML ────────────────────────────────────────────────
 
 HTML = r'''<!DOCTYPE html>
@@ -713,24 +664,29 @@ if __name__ == "__main__":
     config = load_config()
     saved_nickname = config.get("nickname", "")
 
-    # ═══ Update check ═══
-    new_ver, dl_url = check_update()
-    if new_ver and _prompt_update(new_ver):
-        zip_path = Path(tempfile.gettempdir()) / "OneLaunch_Update.zip"
-        try:
-            _download_update(dl_url, str(zip_path))
-            _apply_update(zip_path)
-            sys.exit(0)
-        except Exception as e:
+    # ═══ Update check (tufup) ═══
+    has_update, new_version = check_for_update_and_notify()
+    if has_update and new_version:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        result = messagebox.askyesno(
+            "OneLaunch — Обновление",
+            f"Доступна новая версия {new_version}. Обновить?"
+        )
+        root.destroy()
+        if result:
             try:
-                import tkinter as tk
-                from tkinter import messagebox
-                root = tk.Tk()
-                root.withdraw()
-                messagebox.showerror("OneLaunch — Ошибка", f"Не удалось обновить: {e}")
-                root.destroy()
-            except Exception:
-                pass
+                apply_update_from_launcher(new_version)
+            except Exception as e:
+                try:
+                    root2 = tk.Tk()
+                    root2.withdraw()
+                    messagebox.showerror("OneLaunch — Ошибка", f"Не удалось обновить: {e}")
+                    root2.destroy()
+                except Exception:
+                    pass
 
     import webview
     api = Api()

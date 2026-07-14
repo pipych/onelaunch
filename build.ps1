@@ -57,10 +57,22 @@ Copy-Item "dist\OneLaunch.exe" "$staging\OneLaunch.exe"
 # Copy launcher as _app/
 Copy-Item -Recurse "$appDir" "$staging\_app"
 
+# ── Include trusted root.json (if tufup repo exists) ────
+$rootSrc = "tufup_repo\repository\metadata\root.json"
+if (Test-Path $rootSrc) {
+    Write-Host "  Including root.json from tufup repo"
+    Copy-Item $rootSrc "$staging\_app\root.json" -Force
+    Copy-Item $rootSrc "$staging\root.json" -Force
+    # Also copy to dist for dev testing
+    Copy-Item $rootSrc "$appDir\root.json" -ErrorAction SilentlyContinue
+} else {
+    Write-Host "  NOTE: No root.json (run repo_init.py + repo_add_bundle.py after build)" -ForegroundColor Yellow
+}
+
 Write-Host "Layout: $staging"
 Get-ChildItem $staging -Recurse -Depth 2 | ForEach-Object { $_.FullName.Substring($PSScriptRoot.Length + 1) }
 
-# ── Create update ZIP (_app/ only, not the updater) ─────
+# ── Create update ZIP for tufup (bundle: _app/* without _app/ prefix) ──
 Write-Host "=== Step 5: Create update ZIP ==="
 $zipPath = "dist\OneLaunch_Update.zip"
 Compress-Archive -Path "$staging\_app\*", "$staging\OneLaunch.exe" -DestinationPath $zipPath -Force
