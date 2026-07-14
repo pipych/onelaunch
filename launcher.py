@@ -21,7 +21,7 @@ MODPACK_URL = "https://modpack.onelaunch.pp.ua/onehouse-pack-v1/manifest.json"
 _forge_version = None
 _pack_manifest = None
 
-VERSION = "0.2.7"
+VERSION = "0.2.9"
 def load_config():
     if CONFIG_PATH.exists():
         try:
@@ -186,17 +186,16 @@ def check_for_update_and_notify():
 
 
 def apply_update_from_launcher(new_ver):
-    """Download and apply update, then restart."""
-    if _update_tuf is None:
-        return None
-    result = _update_tuf.check_and_update(VERSION)
-    if result:
-        # Re-launch self (the new version should be in place)
-        exe = Path(sys.executable)
-        subprocess.Popen([str(exe)], shell=False,
+    """Launch the updater to handle the update, then exit."""
+    if getattr(sys, 'frozen', False):
+        updater_exe = Path(sys.executable).parent.parent / "OneLaunch.exe"
+    else:
+        updater_exe = Path(__file__).parent / "dist" / "OneLaunch.exe"
+
+    if updater_exe.exists():
+        subprocess.Popen([str(updater_exe)], shell=False,
                          creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
         os._exit(0)
-    return result
 # ── HTML ────────────────────────────────────────────────
 
 HTML = r'''<!DOCTYPE html>
