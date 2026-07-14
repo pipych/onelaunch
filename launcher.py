@@ -21,7 +21,7 @@ MODPACK_URL = "https://modpack.onelaunch.pp.ua/onehouse-pack-v1/manifest.json"
 _forge_version = None
 _pack_manifest = None
 
-VERSION = "0.2.9"
+VERSION = "0.2.7"
 def load_config():
     if CONFIG_PATH.exists():
         try:
