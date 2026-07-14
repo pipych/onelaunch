@@ -13,7 +13,10 @@ python -m PyInstaller --onefile --noconsole --name OneLaunch `
   --icon OneLaunch_icon.ico `
   --hidden-import webview `
   --hidden-import webview.platforms.winforms `
+  --hidden-import tufup `
+  --hidden-import tufup.client `
   --collect-all webview `
+  --collect-all tufup `
   updater.py
 
 if (-not (Test-Path "dist\OneLaunch.exe")) {
