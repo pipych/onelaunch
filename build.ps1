@@ -17,6 +17,8 @@ python -m PyInstaller --onefile --noconsole --name OneLaunch `
   --hidden-import tufup.client `
   --collect-all webview `
   --collect-all tufup `
+  --collect-all certifi `
+  --collect-submodules urllib3 `
   updater.py
 
 if (-not (Test-Path "dist\OneLaunch.exe")) {
@@ -38,6 +40,8 @@ python -m PyInstaller --onedir --noconsole --name OneLaunch_App `
   --hidden-import minecraft_launcher_lib.command `
   --collect-all minecraft_launcher_lib `
   --collect-all webview `
+  --collect-all tufup `
+  --collect-all certifi `
   launcher.py
 
 $appDir = "dist\OneLaunch_App"
