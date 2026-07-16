@@ -1,0 +1,7 @@
+﻿git : fatal: bad revision 'HEAD~5'
+строка:1 знак:1
++ git -C C:\Users\pshen\.openclaw\workspace\onelaunch diff HEAD~5 -- la ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (fatal: bad revision 'HEAD~5':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

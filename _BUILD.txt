@@ -1,0 +1,75 @@
+╔══════════════════════════════════════════════════════════╗
+║           OneLaunch — BUILD COMMANDS                     ║
+╚══════════════════════════════════════════════════════════╝
+
+Требования:
+  - NSIS (makensis) должен быть в PATH или установлен
+  - Python 3.10+ с зависимостями из requirements.txt
+
+────────────────────────────────────────────────────────────
+1. СБОРКА PYTHON-ПРИЛОЖЕНИЯ (launcher.py → exe)
+────────────────────────────────────────────────────────────
+
+  cd C:\Users\pshen\.openclaw\workspace\onelaunch
+
+  pyinstaller --onefile --windowed --name OneLaunch --icon=OneLaunch_icon.ico --add-data "OneLaunch_icon.ico;." launcher.py
+
+  Результат: dist\OneLaunch.exe
+
+────────────────────────────────────────────────────────────
+2. СБОРКА UPDATER (updater.py → exe)
+────────────────────────────────────────────────────────────
+
+  pyinstaller --onefile --windowed --name OneLaunch_Updater --icon=OneLaunch_icon.ico updater.py
+
+  Результат: dist\OneLaunch_Updater.exe
+
+────────────────────────────────────────────────────────────
+3. ПОДГОТОВКА staging ДЛЯ ИНСТАЛЛЯТОРА
+────────────────────────────────────────────────────────────
+
+  mkdir dist\staging\_app
+  copy dist\OneLaunch.exe dist\staging\
+  copy dist\OneLaunch_Updater.exe dist\staging\_app\OneLaunch_App.exe
+  copy OneLaunch_icon.ico dist\staging\
+
+────────────────────────────────────────────────────────────
+4. СБОРКА NSIS-ИНСТАЛЛЯТОРА
+────────────────────────────────────────────────────────────
+
+  cd C:\Users\pshen\.openclaw\workspace\onelaunch\installer
+  makensis OneLaunch.nsi
+
+  Результат: installer\OneLaunch_Setup.exe
+
+────────────────────────────────────────────────────────────
+5. ПОЛНЫЙ ЦИКЛ (все шаги одной командой)
+────────────────────────────────────────────────────────────
+
+  cd C:\Users\pshen\.openclaw\workspace\onelaunch
+
+  REM Step 1: Build launcher
+  pyinstaller --onefile --windowed --name OneLaunch --icon=OneLaunch_icon.ico --add-data "OneLaunch_icon.ico;." launcher.py
+
+  REM Step 2: Build updater
+  pyinstaller --onefile --windowed --name OneLaunch_Updater --icon=OneLaunch_icon.ico updater.py
+
+  REM Step 3: Prepare staging
+  if not exist "dist\staging\_app" mkdir "dist\staging\_app"
+  copy /Y "dist\OneLaunch.exe" "dist\staging\"
+  copy /Y "dist\OneLaunch_Updater.exe" "dist\staging\_app\OneLaunch_App.exe"
+  copy /Y "OneLaunch_icon.ico" "dist\staging\"
+
+  REM Step 4: Build installer
+  cd installer
+  makensis OneLaunch.nsi
+
+  Результат: installer\OneLaunch_Setup.exe (готов к раздаче)
+
+────────────────────────────────────────────────────────────
+ПРИМЕЧАНИЯ:
+  - INSTALLDIR теперь: $APPDATA\OneLaunch (Roaming)
+  - Ярлык рабочего стола: опциональный, вкл. по умолчанию
+  - Ярлык в Пуск: создаётся всегда
+  - Проверка обновлений: при каждом запуске (перед гл. окном)
+  - Версия: 0.2.1 (менять в launcher.py и updater.py)

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',-apple-system,sans-serif;background:#090b0e;color:#d4d4d4;user-select:none;overflow:hidden;width:100vw;height:100vh}
+
+/* ── Welcome screen ─────────────────────────────── */
+#welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;inset:0;z-index:10;transition:opacity .5s ease-out,transform .5s ease-out}
+#welcome.hidden{opacity:0;transform:scale(1.03);pointer-events:none}
+.welcome-content{display:flex;flex-direction:column;align-items:center;gap:28px}
+.welcome-content h2{font-family:'Montserrat',sans-serif;font-size:32px;font-weight:800;color:#d4d4d4;text-align:center}
+.welcome-content p{font-size:15px;color:#6b7280;text-align:center}
+.input-row{display:flex;align-items:center;gap:0;height:52px;position:relative}
+.welcome-nick{background:rgba(9,11,14,.95);color:#d4d4d4;border:1px solid #1f2937;border-radius:14px 0 0 14px;padding:14px 22px;width:280px;font-size:16px;font-weight:700;text-align:center;outline:none;height:100%;transition:border-color .3s,box-shadow .3s}
+.welcome-nick:focus{border-color:#c0ff00;box-shadow:0 0 16px rgba(192,255,0,.12)}
+.welcome-nick::placeholder{color:#374151;font-weight:400}
+.submit-btn{width:0;height:100%;overflow:hidden;background:#c0ff00;border:none;border-radius:0 14px 14px 0;color:#090b0e;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:width .4s cubic-bezier(.34,1.56,.64,1),opacity .25s;opacity:0;white-space:nowrap}
+.submit-btn.show{width:56px;opacity:1}
+.submit-btn:hover{background:#a3d900}
+.submit-btn svg{width:24px;height:24px;flex-shrink:0}
+
+/* ── Main screen ───────────────────────────────── */
+#main{display:none;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;inset:0;opacity:0;transition:opacity .5s ease-out}
+#main.visible{display:flex;opacity:1}
+#version-badge{position:fixed;top:14px;right:18px;background:rgba(192,255,0,.1);color:#c0ff00;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;border:1px solid rgba(192,255,0,.18);pointer-events:none;z-index:999}
+.ta{text-align:center;margin-bottom:28px}
+.ta h1{font-family:'Montserrat',sans-serif;font-size:40px;font-weight:800;color:#d4d4d4;letter-spacing:-.5px}
+.main-nick{position:fixed;bottom:32px;left:32px;z-index:2;background:rgba(9,11,14,.8);color:#d4d4d4;border:1px solid #1f2937;border-radius:50px;padding:10px 20px;width:170px;font-size:13px;font-weight:700;text-align:center;outline:none;transition:border-color .2s,box-shadow .2s}
+.main-nick:focus{border-color:#c0ff00;box-shadow:0 0 12px rgba(192,255,0,.15)}
+.main-nick::placeholder{color:#374151;font-weight:400}
+.main-nick:disabled{opacity:.5;cursor:not-allowed}
+.btn{font-weight:800;font-size:14px;border:none;border-radius:50px;cursor:pointer;transition:all .2s}
+.btn-launch{background:#c0ff00;color:#090b0e;padding:14px 48px;font-size:16px;margin-top:28px;box-shadow:0 0 24px rgba(192,255,0,.2)}
+.btn-launch:hover{background:#a3d900;transform:translateY(-1px);box-shadow:0 4px 24px rgba(192,255,0,.3)}
+.btn-launch:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.ram-set{position:fixed;bottom:32px;right:32px;z-index:2;display:flex;align-items:center;gap:10px}
+.ram-set label{font-size:12px;color:#6b7280;font-weight:600}
+.ram-set select{background:rgba(9,11,14,.8);color:#d4d4d4;border:1px solid #1f2937;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;outline:none;cursor:pointer}
+.ram-set select:focus{border-color:#c0ff00}
+.folder-btn{position:fixed;top:16px;left:16px;z-index:2;background:none;border:1px solid #1f2937;border-radius:50px;color:#6b7280;font-size:11px;font-weight:600;padding:6px 14px;cursor:pointer;transition:all .2s}
+.folder-btn:hover{color:#d4d4d4;border-color:#374151}
+.progress-wrap{display:none;flex-direction:column;align-items:center;gap:10px;margin-top:20px}
+.progress-wrap.on{display:flex}
+.progress-bar{width:280px;height:4px;background:#14171c;border-radius:50px;overflow:hidden}
+.progress-fill{width:0;height:100%;background:#c0ff00;border-radius:50px;transition:width .3s}
+.progress-text{font-size:12px;color:#6b7280}
+</style>
+</head>
+<body>
+
+<!-- WELCOME SCREEN -->
+<div id="welcome">
+  <div class="welcome-content">
+    <h2>Добро пожаловать в OneLaunch</h2>
+    <p>Введите свой ник чтобы начать играть:</p>
+    <div class="input-row">
+      <input type="text" class="welcome-nick" id="wNick" placeholder="Никнейм" maxlength="16" autofocus spellcheck="false">
+      <button class="submit-btn" id="wSubmit" onclick="saveWelcomeNick()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN SCREEN -->
+<div id="main">
+  <div id="version-badge">v

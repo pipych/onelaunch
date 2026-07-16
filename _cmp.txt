@@ -1,0 +1,1 @@
+same:false curr:18250 orig:26490 diff:-8240

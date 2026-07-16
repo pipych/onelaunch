@@ -1,0 +1,20 @@
+Processing config: C:\Program Files (x86)\NSIS\nsisconf.nsh
+Processing script file: "C:\Users\pshen\.openclaw\workspace\onelaunch\installer\OneLaunch.nsi" (ACP)
+
+Processed 1 file, writing output (x86-unicode):
+
+Output: "C:\Users\pshen\.openclaw\workspace\onelaunch\installer\OneLaunch_Setup.exe"
+Install: 4 pages (256 bytes), 1 section (2072 bytes), 1405 instructions (39340 bytes), 1299 strings (37882 bytes), 1 language table (282 bytes).
+Uninstall: 2 pages (192 bytes), 1 section (2072 bytes), 55 instructions (1540 bytes), 99 strings (2712 bytes), 1 language table (250 bytes).
+Datablock optimizer saved 18683 bytes (~0.0%).
+
+Using zlib compression.
+
+EXE header size:              290304 / 39936 bytes
+Install code:                  18884 / 80320 bytes
+Install data:               32872449 / 51772331 bytes
+Uninstall code+data:          180791 / 252685 bytes
+CRC (0xFDFDC1F2):                  4 / 4 bytes
+
+Total size:                 33362432 / 52145276 bytes (63.9%)
+

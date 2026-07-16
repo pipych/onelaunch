@@ -1,0 +1,10 @@
+Lines:1
+Has wNick:false
+Has mNick:true
+Has openFolder:true
+Has ramSelect:true
+Has progress:true
+Has load config:true
+Has Api class:true
+Has main:true
+No syntax errors detectible

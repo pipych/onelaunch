@@ -1,0 +1,2 @@
+﻿Update check block starts at: 27570
+b'Load saved nickname\r\n    config = load_config()\r\n    saved_nickname = config.get("nickname", "")\r\n\r\n    # \xe2\x95\x90\xe2\x95\x90\xe2\x95\x90 Update check \xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\r\n    new_ver, dl_url = check_update()\r\n    if new_ver and _prompt_update(new_ver):\r\n        zip_path = Path(tempfile.gettempdir()) / "OneLaunch_Update.zip"\r\n    '

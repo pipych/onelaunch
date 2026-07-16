@@ -1,0 +1,1 @@
+﻿b"     root.destroy()\r\n            except Exception:\r\n                pass\r\n\r\n    import webview\r\n    api = Api()\r\n    html_with_nick = HTML.replace('__"

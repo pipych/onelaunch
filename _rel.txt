@@ -1,0 +1,9 @@
+@keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+  updateStatusBtn();
+function updateStatusBtn() {
+  var nick = document.getElementById('ni').value.trim();
+  if (nick.length < 3) { alert('Никнейм 3-16 символов'); return; }
+  pywebview.api.install_and_launch(nick);
+// Called from Python to update progress
+  updateStatusBtn();
+updateStatusBtn();

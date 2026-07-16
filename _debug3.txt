@@ -1,0 +1,3 @@
+﻿apply_update_from_launcher: 7233
+return result after it: 7719
+b'return result\r\n\r\ndef _download_update(url, dest):\r\n    r = R'

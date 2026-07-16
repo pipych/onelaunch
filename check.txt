@@ -1,0 +1,10 @@
+FILE OK
+Lines: 409
+First: """
+Last: 
+HasWelcome: true
+HasMain: true
+HasOpenFolder: true
+HasRamSelect: true
+HasProgress: true
+HasSettings: false

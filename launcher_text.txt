@@ -1,0 +1,408 @@
+"""
+OneLaunch v0.2.1
+"""
+import hashlib, json, os, secrets, shutil, subprocess, sys, tempfile, threading, time
+from pathlib import Path
+from urllib.request import urlopen, Request
+from urllib.parse import quote
+import minecraft_launcher_lib as mcl
+
+VERSION = "0.2.1"
+
+if getattr(sys, 'frozen', False):
+    APP_DIR = Path(sys.executable).parent
+else:
+    APP_DIR = Path(__file__).parent
+
+GAME_DIR = APP_DIR / ".minecraft"
+CONFIG_FILE = APP_DIR / "onelaunch.json"
+MC_VERSION = "1.20.1"
+MODPACK_URL = "https://pub-61c15faa68244ff5afc5cf17a0054122.r2.dev/onehouse-pack-v1/manifest.json"
+_forge_version = None
+_pack_manifest = None
+
+def get_forge_version():
+    global _forge_version
+    if _forge_version is None:
+        vs = mcl.forge.list_forge_versions()
+        m = [v for v in vs if v.startswith("1.20.1-")]
+        _forge_version = m[-1] if m else mcl.forge.find_forge_version("1.20.1")
+    return _forge_version
+
+def find_installed_forge():
+    d = GAME_DIR / "versions"
+    if not d.exists(): return None
+    for e in d.iterdir():
+        if e.is_dir() and e.name.startswith("1.20.1-forge-"):
+            if any(f.suffix == ".jar" for f in e.iterdir()): return e.name
+    return None
+
+def offline_uuid(n):
+    h = hashlib.md5(f"OfflinePlayer:{n}".encode()).hexdigest()
+    return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
+def get_java():
+    for r, _, fs in os.walk(str(GAME_DIR / "runtime")):
+        if "javaw.exe" in fs: return str(Path(r) / "javaw.exe")
+        if "java.exe" in fs: return str(Path(r) / "java.exe")
+    jh = os.environ.get("JAVA_HOME")
+    if jh:
+        for exe in ("javaw.exe", "java.exe"):
+            p = Path(jh) / "bin" / exe
+            if p.exists(): return str(p)
+    for base in [r"C:\Program Files\Eclipse Adoptium", r"C:\Program Files\Java"]:
+        p = Path(base)
+        if p.exists():
+            for d in p.iterdir():
+                if d.is_dir():
+                    for exe in ("javaw.exe", "java.exe"):
+                        e = d / "bin" / exe
+                        if e.exists(): return str(e)
+    return None
+
+def install_java():
+    mcl.runtime.install_jvm_runtime("java-runtime-gamma", str(GAME_DIR),
+        callback={"setStatus": lambda t: None, "setProgress": lambda p: None, "setMax": lambda m: None})
+
+def install_mc():
+    GAME_DIR.mkdir(parents=True, exist_ok=True)
+    mcl.install.install_minecraft_version(MC_VERSION, str(GAME_DIR),
+        callback={"setStatus": lambda t: None, "setProgress": lambda p: None, "setMax": lambda m: None})
+
+def install_forge():
+    fv = get_forge_version()
+    mcl.forge.install_forge_version(fv, str(GAME_DIR),
+        callback={"setStatus": lambda t: None, "setProgress": lambda p: None, "setMax": lambda m: None})
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""): h.update(chunk)
+    return h.hexdigest()
+
+def fetch_manifest():
+    global _pack_manifest
+    if _pack_manifest: return _pack_manifest
+    r = Request(MODPACK_URL, headers={"User-Agent": "OneLaunch/1.0"})
+    with urlopen(r, timeout=15) as resp:
+        _pack_manifest = json.loads(resp.read().decode("utf-8-sig"))
+    return _pack_manifest
+
+def download_file(url, dest):
+    url = quote(url, safe=':/?#[]@!$&\'()*+,;=')
+    r = Request(url, headers={"User-Agent": "OneLaunch/1.0"})
+    with urlopen(r, timeout=30) as resp:
+        with open(dest, "wb") as f:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk: break
+                f.write(chunk)
+
+def sync_modpack():
+    fs = fetch_manifest()
+    s = {"downloaded": 0, "skipped": 0, "errors": 0, "removed": 0}
+    for f in fs:
+        dest = GAME_DIR / f["path"]
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.exists():
+            try:
+                if sha256_file(dest) == f["sha256"]: s["skipped"] += 1; continue
+            except: pass
+        try: download_file(f["url"], dest); s["downloaded"] += 1
+        except: s["errors"] += 1
+    manifest_paths = {f["path"] for f in fs}
+    for root_dir in ("mods", "configs", "overrides"):
+        scan = GAME_DIR / root_dir
+        if not scan.exists(): continue
+        for file in scan.rglob("*"):
+            if not file.is_file(): continue
+            rel = str(file.relative_to(GAME_DIR)).replace("\\", "/")
+            if rel not in manifest_paths: file.unlink(); s["removed"] += 1
+    return s
+
+def launch_game(username, uuid_str, access_token, ram_mb=None):
+    java = get_java() or install_java()
+    fv = find_installed_forge() or get_forge_version()
+    if not find_installed_forge(): install_forge(); fv = find_installed_forge()
+    if ram_mb is None: ram_mb = get_ram_setting()
+    ram_gb = max(1, ram_mb // 1024)
+    opts = {"username": username, "uuid": uuid_str, "token": access_token,
+            "executablePath": java, "jvmArguments": [f"-Xmx{ram_gb}G", "-Xms512M"],
+            "launcherName": "OneLaunch", "launcherVersion": "1.0"}
+    cmd = mcl.command.get_minecraft_command(fv, str(GAME_DIR), opts)
+    subprocess.Popen(cmd, cwd=str(GAME_DIR),
+        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+
+def get_total_ram_gb():
+    try:
+        import ctypes
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_uint32), ("dwMemoryLoad", ctypes.c_uint32),
+                ("ullTotalPhys", ctypes.c_uint64), ("ullAvailPhys", ctypes.c_uint64),
+                ("ullTotalPageFile", ctypes.c_uint64), ("ullAvailPageFile", ctypes.c_uint64),
+                ("ullTotalVirtual", ctypes.c_uint64), ("ullAvailVirtual", ctypes.c_uint64)]
+        s = MEMORYSTATUSEX()
+        s.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(s)): raise OSError()
+        return max(1, round(s.ullTotalPhys / (1024**3)))
+    except: return 8
+
+def get_default_ram_mb():
+    total = get_total_ram_gb()
+    if total <= 8: return 2048
+    elif total <= 16: return 8192
+    elif total <= 32: return 16384
+    else: return 24576
+
+def get_ram_setting():
+    cfg = load_config()
+    if "ram_mb" in cfg and isinstance(cfg["ram_mb"], int) and cfg["ram_mb"] >= 512:
+        return cfg["ram_mb"]
+    return get_default_ram_mb()
+
+def load_config():
+    try:
+        if CONFIG_FILE.exists(): return json.loads(CONFIG_FILE.read_text("utf-8"))
+    except: pass
+    return {}
+
+def save_config(data):
+    CONFIG_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
+
+# ── HTML (single page, welcome + main sections) ─────────
+
+HTML = r'''<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',-apple-system,sans-serif;background:#090b0e;color:#d4d4d4;user-select:none;overflow:hidden;width:100vw;height:100vh}
+
+/* ── Welcome screen ─────────────────────────────── */
+#welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;inset:0;z-index:10;transition:opacity .5s ease-out,transform .5s ease-out}
+#welcome.hidden{opacity:0;transform:scale(1.03);pointer-events:none}
+.welcome-content{display:flex;flex-direction:column;align-items:center;gap:28px}
+.welcome-content h2{font-family:'Montserrat',sans-serif;font-size:32px;font-weight:800;color:#d4d4d4;text-align:center}
+.welcome-content p{font-size:15px;color:#6b7280;text-align:center}
+.input-row{display:flex;align-items:center;gap:0;height:52px;position:relative}
+.welcome-nick{background:rgba(9,11,14,.95);color:#d4d4d4;border:1px solid #1f2937;border-radius:14px 0 0 14px;padding:14px 22px;width:280px;font-size:16px;font-weight:700;text-align:center;outline:none;height:100%;transition:border-color .3s,box-shadow .3s}
+.welcome-nick:focus{border-color:#c0ff00;box-shadow:0 0 16px rgba(192,255,0,.12)}
+.welcome-nick::placeholder{color:#374151;font-weight:400}
+.submit-btn{width:0;height:100%;overflow:hidden;background:#c0ff00;border:none;border-radius:0 14px 14px 0;color:#090b0e;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:width .4s cubic-bezier(.34,1.56,.64,1),opacity .25s;opacity:0;white-space:nowrap}
+.submit-btn.show{width:56px;opacity:1}
+.submit-btn:hover{background:#a3d900}
+.submit-btn svg{width:24px;height:24px;flex-shrink:0}
+
+/* ── Main screen ───────────────────────────────── */
+#main{display:none;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;inset:0;opacity:0;transition:opacity .5s ease-out}
+#main.visible{display:flex;opacity:1}
+#version-badge{position:fixed;top:14px;right:18px;background:rgba(192,255,0,.1);color:#c0ff00;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;border:1px solid rgba(192,255,0,.18);pointer-events:none;z-index:999}
+.ta{text-align:center;margin-bottom:28px}
+.ta h1{font-family:'Montserrat',sans-serif;font-size:40px;font-weight:800;color:#d4d4d4;letter-spacing:-.5px}
+.main-nick{position:fixed;bottom:32px;left:32px;z-index:2;background:rgba(9,11,14,.8);color:#d4d4d4;border:1px solid #1f2937;border-radius:50px;padding:10px 20px;width:170px;font-size:13px;font-weight:700;text-align:center;outline:none;transition:border-color .2s,box-shadow .2s}
+.main-nick:focus{border-color:#c0ff00;box-shadow:0 0 12px rgba(192,255,0,.15)}
+.main-nick::placeholder{color:#374151;font-weight:400}
+.main-nick:disabled{opacity:.5;cursor:not-allowed}
+.btn{font-weight:800;font-size:14px;border:none;border-radius:50px;cursor:pointer;transition:all .2s}
+.btn-launch{background:#c0ff00;color:#090b0e;padding:14px 48px;font-size:16px;margin-top:28px;box-shadow:0 0 24px rgba(192,255,0,.2)}
+.btn-launch:hover{background:#a3d900;transform:translateY(-1px);box-shadow:0 4px 24px rgba(192,255,0,.3)}
+.btn-launch:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.ram-set{position:fixed;bottom:32px;right:32px;z-index:2;display:flex;align-items:center;gap:10px}
+.ram-set label{font-size:12px;color:#6b7280;font-weight:600}
+.ram-set select{background:rgba(9,11,14,.8);color:#d4d4d4;border:1px solid #1f2937;border-radius:50px;padding:8px 14px;font-size:12px;font-weight:700;outline:none;cursor:pointer}
+.ram-set select:focus{border-color:#c0ff00}
+.folder-btn{position:fixed;top:16px;left:16px;z-index:2;background:none;border:1px solid #1f2937;border-radius:50px;color:#6b7280;font-size:11px;font-weight:600;padding:6px 14px;cursor:pointer;transition:all .2s}
+.folder-btn:hover{color:#d4d4d4;border-color:#374151}
+.progress-wrap{display:none;flex-direction:column;align-items:center;gap:10px;margin-top:20px}
+.progress-wrap.on{display:flex}
+.progress-bar{width:280px;height:4px;background:#14171c;border-radius:50px;overflow:hidden}
+.progress-fill{width:0;height:100%;background:#c0ff00;border-radius:50px;transition:width .3s}
+.progress-text{font-size:12px;color:#6b7280}
+</style>
+</head>
+<body>
+
+<!-- WELCOME SCREEN -->
+<div id="welcome">
+  <div class="welcome-content">
+    <h2>Добро пожаловать в OneLaunch</h2>
+    <p>Введите свой ник чтобы начать играть:</p>
+    <div class="input-row">
+      <input type="text" class="welcome-nick" id="wNick" placeholder="Никнейм" maxlength="16" autofocus spellcheck="false">
+      <button class="submit-btn" id="wSubmit" onclick="saveWelcomeNick()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN SCREEN -->
+<div id="main">
+  <div id="version-badge">v''' + VERSION + r'''</div>
+  <div class="ta"><h1>OneLaunch</h1></div>
+  <button class="btn btn-launch" id="launchBtn" onclick="launch()" disabled>Введите ник чтобы начать</button>
+  <div class="progress-wrap" id="progress">
+    <div class="progress-bar"><div class="progress-fill" id="fill"></div></div>
+    <div class="progress-text" id="progText"></div>
+  </div>
+  <button class="folder-btn" onclick="openFolder()">📁 Папка игры</button>
+  <input type="text" class="main-nick" id="mNick" placeholder="Никнейм" maxlength="16" spellcheck="false">
+  <div class="ram-set">
+    <label>ОЗУ</label>
+    <select id="ramSelect">
+      <option value="2">2 GB</option><option value="4">4 GB</option>
+      <option value="8">8 GB</option><option value="12">12 GB</option>
+      <option value="16">16 GB</option><option value="24">24 GB</option>
+    </select>
+  </div>
+</div>
+
+<script>
+var wNick=document.getElementById("wNick");
+var wSubmit=document.getElementById("wSubmit");
+var welcome=document.getElementById("welcome");
+var main=document.getElementById("main");
+var mNick=document.getElementById("mNick");
+var launchBtn=document.getElementById("launchBtn");
+var progress=document.getElementById("progress");
+var fill=document.getElementById("fill");
+var progText=document.getElementById("progText");
+var ramSelect=document.getElementById("ramSelect");
+var installing=false;
+var ramVal=8;
+
+// ── Welcome input ─────────────────────────────
+wNick.addEventListener("input",function(){
+  if(wNick.value.trim().length>0) wSubmit.classList.add("show");
+  else wSubmit.classList.remove("show");
+});
+wNick.addEventListener("keydown",function(e){
+  if(e.key==="Enter"&&wNick.value.trim()) saveWelcomeNick();
+});
+
+function saveWelcomeNick(){
+  var nick=wNick.value.trim();
+  if(!nick) return;
+  window.pywebview.api.save_nickname(nick).then(function(){
+    // Fade out welcome
+    welcome.classList.add("hidden");
+    // Prepare main and fade in
+    mNick.value=nick;
+    launchBtn.disabled=false;
+    launchBtn.textContent="ИГРАТЬ";
+    main.classList.add("visible");
+  });
+}
+
+// ── Main screen ──────────────────────────────
+mNick.addEventListener("input",function(){
+  if(!installing){
+    launchBtn.disabled=!mNick.value.trim();
+    launchBtn.textContent=mNick.value.trim()?"ИГРАТЬ":"Введите ник чтобы начать";
+  }
+});
+mNick.addEventListener("change",function(){
+  if(mNick.value.trim()) window.pywebview.api.save_nickname(mNick.value.trim());
+});
+
+ramSelect.addEventListener("change",function(){
+  ramVal=parseInt(ramSelect.value);
+  window.pywebview.api.save_ram_setting(ramVal*1024);
+});
+
+window.addEventListener("load",function(){
+  window.pywebview.api.get_nickname().then(function(n){
+    if(n){
+      // Already has nickname → skip welcome
+      welcome.style.display="none";
+      mNick.value=n;
+      launchBtn.disabled=false;
+      launchBtn.textContent="ИГРАТЬ";
+      main.classList.add("visible");
+    }
+  });
+  window.pywebview.api.get_ram_setting().then(function(r){
+    ramVal=Math.max(1,Math.floor(r/1024));
+    if(ramVal>0&&ramVal<=24) ramSelect.value=ramVal;
+  });
+});
+
+function launch(){
+  if(installing||!mNick.value.trim()) return;
+  installing=true;
+  launchBtn.disabled=true;mNick.disabled=true;ramSelect.disabled=true;
+  launchBtn.textContent="Установка...";
+  progress.classList.add("on");
+  progText.textContent="Запуск...";
+  window.pywebview.api.install_and_launch(mNick.value.trim());
+}
+
+window._setProgress=function(pct,text){
+  fill.style.width=pct+"%";
+  if(text) progText.textContent=text;
+};
+window._onComplete=function(err){
+  if(err){
+    installing=false;launchBtn.disabled=false;mNick.disabled=false;ramSelect.disabled=false;
+    launchBtn.textContent="ИГРАТЬ";
+    progress.classList.remove("on");
+    progText.textContent="Ошибка: "+err;
+  }
+};
+
+function openFolder(){window.pywebview.api.open_minecraft_folder();}
+</script>
+</body>
+</html>'''
+
+# ── API ─────────────────────────────────────────────────
+
+class Api:
+    def get_nickname(self): return load_config().get("nickname", "")
+    def save_nickname(self, nick: str):
+        cfg = load_config(); cfg["nickname"] = nick; save_config(cfg)
+    def open_minecraft_folder(self):
+        GAME_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(['explorer', str(GAME_DIR)])
+    def get_ram_setting(self): return get_ram_setting()
+    def save_ram_setting(self, ram_mb: int):
+        cfg = load_config(); cfg["ram_mb"] = max(512, int(ram_mb)); save_config(cfg)
+    def install_and_launch(self, nick: str):
+        import webview
+        w = webview.active_window()
+        def run():
+            try:
+                def progress(p, t): w.evaluate_js(f"_setProgress({p},'{t}')")
+                progress(10, 'Установка Java 17...')
+                if not get_java(): install_java()
+                progress(30, 'Загрузка Minecraft...')
+                if not (GAME_DIR / "versions" / MC_VERSION / f"{MC_VERSION}.jar").exists(): install_mc()
+                progress(50, 'Установка Forge...')
+                if not find_installed_forge(): install_forge()
+                progress(75, 'Синхронизация модпака...')
+                self.save_nickname(nick)
+                sync_modpack()
+                progress(95, 'Запуск игры...')
+                ram = get_ram_setting()
+                launch_game(nick, offline_uuid(nick), "***", ram)
+                w.evaluate_js("_onComplete('')")
+                time.sleep(10)
+                os._exit(0)
+            except Exception as e:
+                w.evaluate_js(f"_onComplete('{str(e)}')")
+        threading.Thread(target=run, daemon=True).start()
+
+# ── Entry Point ─────────────────────────────────────────
+
+if __name__ == "__main__":
+    import webview
+
+    GAME_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_FILE.exists():
+        save_config({"nickname": ""})
+
+    webview.create_window("OneLaunch", html=HTML, js_api=Api(),
+                          width=1280, height=720, resizable=False)
+    webview.start()

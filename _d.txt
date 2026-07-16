@@ -1,0 +1,9 @@
+﻿if __name__ at: 27491
+0: b'if __name__ == "__main__":'
+1: b'    GAME_DIR.mkdir(parents=True, exist_ok=True)'
+2: b''
+3: b'    # Load saved nickname'
+4: b'    config = load_config()'
+5: b'    saved_nickname = config.get("nickname", "")'
+6: b''
+7: b'    # \xe2\x95\x90\xe2\x95\x90\xe2\x95\x90 Update check (tufup) \xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\n    has_update, new_version = check_for_update_and_no'

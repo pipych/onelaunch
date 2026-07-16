@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "<string>", line 13, in <module>
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.11_3.11.2544.0_x64__qbz5n2kfra8p0\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 3-4: character maps to <undefined>
+return result at: 7259
+def _download_update at: 7273
+# HTML at: 9299
+'return result\n\ndef _download_update(url, dest):\n  '
+'\ndef _download_update(url, dest):\n    r = Request('
